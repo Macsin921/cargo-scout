@@ -1,59 +1,54 @@
 import requests
+import time
+import random
 
-TG_TOKEN = "8260211449:AAGtYQ5roe6Heu40hYnh_WSaiL0RndD3f-c"
-CHAT_ID = "-1003604954550"
-CARGO_RATE = 450
+TG = "8260211449:AAGtYQ5roe6Heu40hYnh_WSaiL0RndD3f-c"
+CHAT = "-1003604954550"
 
-HEADERS = {"User-Agent": "Mozilla/5.0", "Accept-Language": "ru"}
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36",
+    "Accept": "*/*",
+    "Origin": "https://www.wildberries.ru",
+    "Referer": "https://www.wildberries.ru/"
+}
 
-CHINA = [
-    {"name": "powerbank 30000", "price_cny": 85, "weight": 0.4},
-    {"name": "powerbank 20000", "price_cny": 55, "weight": 0.3},
-    {"name": "tws наушники", "price_cny": 45, "weight": 0.1},
+ITEMS = [
+    ("powerbank 30000", 85, 0.4),
+    ("powerbank 20000", 55, 0.3),
+    ("tws наушники", 45, 0.1),
 ]
 
-def search_wb(query):
+def search(q):
+    url = f"https://search.wb.ru/exactmatch/ru/common/v5/search?appType=1&curr=rub&dest=-1257786&query={q}&resultset=catalog&sort=popular&spp=30"
     try:
-        r = requests.get(
-            f"https://search.wb.ru/exactmatch/ru/common/v4/search?query={query}&resultset=catalog&limit=5",
-            headers=HEADERS, timeout=30
-        )
-        data = r.json()
-        prods = data.get("data", {}).get("products", [])
-        return prods
+        r = requests.get(url, headers=HEADERS, timeout=15)
+        if r.status_code == 429:
+            return "429"
+        return r.json().get("data", {}).get("products", [])
     except Exception as e:
-        return []
-
-def send_tg(text):
-    requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
-        json={"chat_id": CHAT_ID, "text": text})
+        return str(e)
 
 def main():
-    debug = []
-    opps = []
+    out = []
+    for name, cny, kg in ITEMS:
+        landed = cny * 13.5 + kg * 450
+        time.sleep(random.uniform(2, 4))
+        res = search(name)
 
-    for item in CHINA:
-        landed = item["price_cny"] * 13 + item["weight"] * CARGO_RATE
-        prods = search_wb(item["name"])
-        debug.append(f"{item['name']}: {len(prods)} шт, landed={landed:.0f}р")
+        if res == "429":
+            out.append(f"{name}: 429 BANNED")
+        elif isinstance(res, str):
+            out.append(f"{name}: ERROR {res}")
+        else:
+            out.append(f"{name}: {len(res)} шт, landed={landed:.0f}р")
+            for p in res[:2]:
+                price = p.get("salePriceU", 0) / 100
+                if price > 0:
+                    margin = (price - landed) / price * 100
+                    out.append(f"  └ {price:.0f}р, маржа {margin:.0f}%")
 
-        for p in prods[:3]:
-            price = p.get("salePriceU", 0) / 100
-            name = p.get("name", "?")[:40]
-
-            if price > 0:
-                margin = (price - landed) / price * 100
-                profit = price - landed
-                debug.append(f"  {name}: {price:.0f}р, margin={margin:.0f}%")
-
-                if margin > 25 and profit > 200:
-                    opps.append(f"{name}: {price:.0f}р, маржа {margin:.0f}%, профит {profit:.0f}р")
-
-    msg = "🔍 DEBUG:\n" + "\n".join(debug[:15])
-    if opps:
-        msg += "\n\n🚀 OPPORTUNITIES:\n" + "\n".join(opps[:5])
-
-    send_tg(msg)
+    msg = "🔍 SCOUT v2:\n" + "\n".join(out)
+    requests.post(f"https://api.telegram.org/bot{TG}/sendMessage", json={"chat_id": CHAT, "text": msg})
     print(msg)
 
 if __name__ == "__main__":
